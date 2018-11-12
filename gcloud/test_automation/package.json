@@ -1,0 +1,17 @@
+{
+  "groupName": "spartos.autotest",
+  "version": "1.0.0",
+  "description": "Performance test flow automation for ETH POA network + Spartos contracts",
+  "main": "./src/setupgenesis.js",
+  "scripts": {
+    "genesis": "NETWORK_FOLDER=${NETWORK_FOLDER:=\"../ethereum/nodes5/\"} node src/setupgenesis.js",
+    "postman": "GROUP=${GROUP:=testnet} node src/getNodeUrlsForPostman.js",
+    "test": "test"
+  },
+  "author": "rodion.altshuler@spartos.com",
+  "license": "ISC",
+  "dependencies": {
+    "@google-cloud/compute": "^0.10.0",
+    "ddos-stress": "^0.1.0"
+  }
+}

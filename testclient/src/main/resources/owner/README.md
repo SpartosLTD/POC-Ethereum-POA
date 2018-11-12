@@ -1,0 +1,1 @@
+Owner key is one of the addresses prefunded via genesis.json:  if we use Ethereum, not Quorum network, network participants require ether to make transactions.

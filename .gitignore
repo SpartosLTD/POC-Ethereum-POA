@@ -1,0 +1,9 @@
+.idea/
+build/
+node_modules/
+Spartos-Shared*.json
+activateSpartosAccount.sh
+operator.json
+owner.json
+password.txt
+wallets/
