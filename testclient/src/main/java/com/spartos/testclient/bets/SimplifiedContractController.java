@@ -6,9 +6,7 @@ import com.spartos.testclient.credentials.CredentialsProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.web3j.abi.FunctionEncoder;
 import org.web3j.abi.TypeReference;
 import org.web3j.abi.datatypes.Function;
@@ -66,7 +64,7 @@ public class SimplifiedContractController {
                 node,
                 credentials,
                 CONTRACT_GAS_PROVIDER
-                ).send();
+        ).send();
         return contract.getContractAddress();
 
     }
@@ -94,21 +92,25 @@ public class SimplifiedContractController {
             }
         }
 
+        pause();
+
         BettingOntology bettingContract = BettingOntology.load(
                 params.getBettingContractAddress(),
                 nodeClients.get(0),
                 ownerCredentials,
-                CONTRACT_GAS_PROVIDER
+                GAS_PRICE,
+                GAS_LIMIT
         );
 
-        pause();
 
         LOG.info("Starting to make bets via " + playersCredentials.size() + " players");
 
         List<CompletableFuture<EthSendTransaction>> betTransactionFutures = new ArrayList<>();
 
         playersCredentials.forEach(credentials -> {
-            Web3j node = nodeClients.get(Math.abs(credentials.hashCode()) % nodeClients.size());
+            int nodeIndex = Math.abs(credentials.hashCode()) % nodeClients.size();
+            LOG.info("Node index: " + nodeIndex);
+            Web3j node = nodeClients.get(nodeIndex);
             int firstNonce = getNonce(node, credentials.getAddress()).intValue();
             for (int i = 0; i < params.getBetsPerPlayerCount(); i++) {
 
@@ -147,6 +149,7 @@ public class SimplifiedContractController {
     @PostMapping("/simple/settle")
     public SettlementResponse settle(@RequestBody SettlementParams params) throws Exception {
 
+        LOG.info("Settling " + params.getTransactionsCount() + " bets");
         List<Web3j> nodeClients =
                 Arrays.stream(params.getNodeUrls())
                         .map(node -> Web3j.build(new HttpService(node)))
@@ -162,6 +165,8 @@ public class SimplifiedContractController {
 
         Web3j node = nodeClients.get(0);
         BigInteger firstNonce = getNonce(node, ownerCredentials.getAddress());
+
+        LOG.info("firstNonce is " + firstNonce);
 
         List<CompletableFuture<EthSendTransaction>> futures =
                 IntStream.range(0, params.getTransactionsCount())
@@ -189,6 +194,48 @@ public class SimplifiedContractController {
         return new SettlementResponse(params.getBettingContractAddress(), params.getTransactionsCount());
     }
 
+    @GetMapping("/simple/metrics/{bettingContractAddress}")
+    public BettingContractMetricsResponse getMetrics(@PathVariable("bettingContractAddress") String bettingContractAddress, @RequestParam("nodeUrl") String nodeUrl) throws Exception {
+        Credentials anyCredentials = credentialsProvider.loadCredentials(CredentialsGroup.PLAYER);
+        Web3j node = Web3j.build(new HttpService(nodeUrl));
+        BettingOntology bettingContract = BettingOntology.load(
+                bettingContractAddress,
+                node,
+                anyCredentials,
+                CONTRACT_GAS_PROVIDER
+        );
+
+
+        BigInteger settlementsCount = null;
+        try {
+            settlementsCount = bettingContract.getSettlementsCount().send();
+        } catch (Exception e) {
+            LOG.error(e.getMessage());
+        }
+
+        if (settlementsCount != null && settlementsCount.intValue() > 0) {
+
+            return new BettingContractMetricsResponse(
+                    bettingContract.getBetsCount().send().longValue(),
+                    bettingContract.getFirstBetTimestamp().send().longValue(),
+                    bettingContract.getLastBetTimestamp().send().longValue(),
+                    bettingContract.getSettlementsCount().send().longValue(),
+                    bettingContract.getFirstSettlementTimestamp().send().longValue(),
+                    bettingContract.getLastSettlementTimestamp().send().longValue()
+            );
+        } else {
+
+            return new BettingContractMetricsResponse(
+                    bettingContract.getBetsCount().send().longValue(),
+                    bettingContract.getFirstBetTimestamp().send().longValue(),
+                    bettingContract.getLastBetTimestamp().send().longValue(),
+                    0,
+                    0,
+                    0
+            );
+        }
+
+    }
 
     private void pause() throws InterruptedException {
         Thread.sleep(5000);
@@ -208,8 +255,7 @@ public class SimplifiedContractController {
     private CompletableFuture<EthSendTransaction> sendSimpleSettleTransaction(Web3j node, Credentials credentials, BigInteger nonce, BettingOntology contract, BigInteger outcome) {
         final Function function = new Function(
                 BettingOntology.FUNC_SETTLE,
-                Arrays.<Type>asList(new org.web3j.abi.datatypes.Address(credentials.getAddress()),
-                        new org.web3j.abi.datatypes.generated.Uint8(outcome)),
+                Arrays.<Type>asList(new org.web3j.abi.datatypes.generated.Uint8(outcome)),
                 Collections.<TypeReference<?>>emptyList());
 
         return sendContractTransaction(node, function, credentials, nonce, contract.getContractAddress());
@@ -244,6 +290,14 @@ public class SimplifiedContractController {
 
     private void fundAccounts(Credentials source, List<Credentials> targets, BigInteger amountWei, Web3j node) {
         LOG.info("Funding account with ether for " + targets.size() + " addresses");
+
+        try {
+            String balance = node.ethGetBalance(source.getAddress(), DefaultBlockParameterName.LATEST).send().getBalance().toString();
+            LOG.info("Funder balance: " + balance);
+        } catch (Exception e) {
+            LOG.error("Error getting funder balance: " + e.getMessage());
+        }
+
         List<CompletableFuture<EthSendTransaction>> sendEtherTransactions = new ArrayList<>();
         BigInteger initialNonce = getNonce(node, source.getAddress());
         for (int i = 0; i < targets.size(); i++) {
@@ -261,9 +315,12 @@ public class SimplifiedContractController {
                 .peek(ethSendTransaction -> {
                     if (ethSendTransaction.getError() != null) {
                         LOG.error(ethSendTransaction.getError().getMessage());
+                    } else  {
+                        LOG.info(ethSendTransaction.getTransactionHash());
                     }
                 })
                 .collect(Collectors.toList());
+
 
         LOG.info(targets.size() + " accounts have been funded with ether");
     }

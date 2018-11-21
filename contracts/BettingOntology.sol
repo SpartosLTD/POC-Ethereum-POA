@@ -4,7 +4,7 @@ contract BettingOntology {
 
     mapping(address => uint) private balances;
 
-    uint8 private betsCount;
+    uint private betsCount;
     uint private firstBetTimestamp;
     uint private lastBetTimestamp ;
 
@@ -14,21 +14,21 @@ contract BettingOntology {
 
 
     struct Bet {
-        uint8 id;
+        uint id;
         address player;
         uint amount;
         uint8 outcome;
     }
 
-    uint8[] private betIds;
+    uint[] private betIds;
 
-    mapping(uint8 => Bet) private bets;
+    mapping(uint => Bet) private bets;
 
     address private owner;
 
     constructor() public {
         owner = msg.sender;
-        balances[owner] = 100000000;
+        balances[owner] = 1000000000;
     }
 
     function transfer(address addressFrom, address addressTo, uint amount) public {
@@ -66,7 +66,7 @@ contract BettingOntology {
 
     function settle(uint8 outcome) external {
 
-        for (uint8 i = 0; i < betIds.length; i++) {
+        for (uint i = 0; i < betIds.length; i++) {
             Bet memory bet = bets[betIds[i]];
             address player = bet.player;
 
@@ -92,7 +92,7 @@ contract BettingOntology {
         return lastBetTimestamp;
     }
 
-    function getBetsCount() view returns (uint) {
+    function getBetsCount() public view returns (uint) {
         return betsCount;
     }
 
